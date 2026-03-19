@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
+from nemo_gym.config_types import ModelServerRef, ResourcesServerRef
 from nemo_gym.openai_utils import (
     NeMoGymEasyInputMessage,
     NeMoGymResponseCreateParamsNonStreaming,
@@ -25,9 +26,7 @@ from nemo_gym.openai_utils import (
     NeMoGymSummary,
 )
 from nemo_gym.server_utils import ServerClient
-from responses_api_agents.simple_agent.app import (
-    ModelServerRef,
-    ResourcesServerRef,
+from responses_api_agents.cvdp_agent.app import (
     SimpleAgent,
     SimpleAgentConfig,
 )

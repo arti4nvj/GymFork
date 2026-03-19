@@ -2,32 +2,32 @@
 
 Models are given a hardware design specification and asked to produce a SystemVerilog
 implementation. Verification is done by running the per-task cocotb test harness inside
-Docker using the `ghcr.io/hdl/sim/osvb` simulator image (Icarus Verilog).
+Apptainer (using the `ghcr.io/hdl/sim/osvb` simulator image with Icarus Verilog).
 
 ## Verification Flow
 
-Native resource server — verification runs as a Docker subprocess invoked
+Native resource server — verification runs as an Apptainer subprocess invoked
 from `verify()`. The harness files (compose config, test scripts) are embedded in each
 JSONL entry so the server is self-contained.
 
 Mirrors `repository.py` in the CVDP source:
 
 1. Parse model response via `ModelHelpers.parse_model_response()`
-2. Write harness files to temp workspace — applies image/network placeholder substitutions and strips `/code` volume entries from the compose YAML
+2. Write harness files to temp workspace — applies image placeholder substitutions
 3. Write extracted RTL to `workdir/rtl/`
-4. For each service in `docker-compose.yml`, run `docker compose run` with volume mounts for `rtl/`, `verif/`, `docs/`, `src/`, `rundir/`
+4. For each service in `docker-compose.yml`, pull the Docker image as a cached SIF file and run via `apptainer exec` with `--bind` mounts for `rtl/`, `verif/`, `docs/`, `src/`, `rundir/`
 5. Exit code `0` across all services → reward `1.0`; any failure → reward `0.0`
 
 ## Configuration
 
 | Field | Default | Description |
 |---|---|---|
-| `oss_sim_image` | `ghcr.io/hdl/sim/osvb` | Docker image for open-source simulation (Icarus) |
-| `oss_pnr_image` | `""` | Docker image for place-and-route problems |
+| `oss_sim_image` | `ghcr.io/hdl/sim/osvb` | Container image for open-source simulation (Icarus) |
+| `oss_pnr_image` | `""` | Container image for place-and-route problems |
 | `eda_sim_image` | `""` | Commercial EDA image (Cadence Xcelium etc.) |
-| `license_network_name` | `licnetwork` | Docker network name for EDA license server |
-| `docker_timeout` | `600` | Seconds before a Docker run is killed |
-| `num_processes` | `4` | Max concurrent Docker jobs |
+| `container_timeout` | `600` | Seconds before an Apptainer run is killed |
+| `num_processes` | `4` | Max concurrent Apptainer jobs |
+| `sif_cache_dir` | `~/.cache/nemo-gym/sif` | Directory for cached SIF images pulled from Docker registries |
 
 ## Download Dataset
 ```bash
@@ -38,69 +38,30 @@ ng_download_dataset_from_gitlab \
       +output_fpath=resources_servers/cvdp/data/gym_cvdp_v1.0.2_nonagentic_code_gen_no_commercial.jsonl
 ```
       
-### Dataset Creation (this step does NOT need to be repeated to run evals)
-
-This step is just FYI of how the Gym version of the dataset was created. 
-
-### Step 1 — Export prompts from CVDP
-
-Use CVDP's built-in `local_export` mode to generate the exact prompts CVDP would send to a model:
-
-```bash
-cd /path/to/cvdp_benchmark
-python run_benchmark.py \
-    -f <dataset>.jsonl \
-    --model local_export \
-    --prompts-responses-file <output_prompts>.jsonl \
-    --llm \
-    --prefix export_run
-```
-
-This produces a JSONL with `{id, prompt, system, user}` per entry.
-
-### Step 2 — Convert to NeMo-Gym format
-
-```bash
-python resources_servers/cvdp/scripts/convert_to_gym.py \
-    --prompts  <prompts_from_step1>.jsonl \
-    --dataset  <original_cvdp_dataset>.jsonl \
-    --output   resources_servers/cvdp/data/<output>.jsonl
-```
-
-Each output row has `responses_create_params` (system + user prompts) and `verifier_metadata`
-(harness files, target files, category, difficulty) needed by the resource server.
-
-### Gym JSONL schema
-
-```json
-{
-  "responses_create_params": {
-    "input": [
-      {"role": "system", "content": "<rtl-task system prompt>"},
-      {"role": "user",   "content": "<problem spec + optional context>"}
-    ]
-  },
-  "verifier_metadata": {
-    "task_id": "cvdp_copilot_...",
-    "categories": ["cid003", "medium"],
-    "difficulty": "medium",
-    "target_files": ["rtl/foo.sv"],
-    "harness_files": {
-      "docker-compose.yml": "...",
-      "src/.env": "...",
-      "src/test_foo.py": "..."
-    }
-  }
-}
-```
+For details on how the dataset was created, see [docs/data_lineage.md](docs/data_lineage.md).
 
 ## Setup
+If you do not have one, copy the provided `env.yaml.example` to the repo root and fill in your credentials:
+```bash
+cp resources_servers/cvdp/env.yaml.example env.yaml
+# then edit env.yaml with your policy_api_key and policy_model_name as shown below
+```
 
 Configure your inference endpoint in `env.yaml` at the repo root:
 
+This example is for using the **NV inference endpoint** with the vLLM backend. This can also be run with any OpenAI-compatible endpoint with any Gym-supported backend.
+
+**NVIDIA hosted API**
 ```yaml
 policy_base_url: https://inference-api.nvidia.com/v1
 policy_api_key: <your-api-key>
+policy_model_name: <your-model-name>
+```
+
+**Self-hosted vLLM**(start `vllm serve <model> --port 8000` first):
+```yaml
+policy_base_url: http://localhost:8000/v1
+policy_api_key: token-abc123
 policy_model_name: <your-model-name>
 ```
 
@@ -116,7 +77,7 @@ pre-commit install
 
 ## Collect Rollouts
 
-### Step 1 — Start servers
+### Step 1 — Start servers 
 
 ```bash
 ng_run "+config_paths=[resources_servers/cvdp/configs/cvdp.yaml,responses_api_models/vllm_model/configs/vllm_model.yaml]"
@@ -173,7 +134,7 @@ results/report/
 │       ├── prompts/
 │       │   └── <issue>.md     # System + user prompt sent to the model
 │       └── reports/
-│           └── <issue>.txt    # Docker test harness stdout/stderr
+│           └── <issue>.txt    # Apptainer test harness stdout/stderr
 ├── sample_2/
 │   └── ...
 └── ...
@@ -182,7 +143,7 @@ results/report/
 - **`composite_report.txt`** — the main result: per-sample pass rates, mean/stddev, overall pass@k, and per-category breakdown.
 - **`report.txt`** (per-sample) — individual sample results with the same category breakdown.
 - **`raw_result.json`** — machine-readable pass/fail for each task, used by CVDP's `combine_reports()`.
-- **Per-task `reports/<issue>.txt`** — full cocotb test output for debugging individual failures.
+- **Per-task `reports/<issue>.txt`** — full cocotb test output (from Apptainer container) for debugging individual failures.
 
 #### Beginning of composite_report.txt
 

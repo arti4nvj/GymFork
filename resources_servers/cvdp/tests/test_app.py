@@ -29,6 +29,7 @@ from resources_servers.cvdp.app import (
     _build_env_args,
     _load_dot_env,
     _parse_compose_service,
+    _parse_model_response,
 )
 
 
@@ -109,6 +110,47 @@ def _make_body(
             "harness_files": harness_files,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _parse_model_response
+# ---------------------------------------------------------------------------
+
+
+class TestParseModelResponse:
+    def test_extracts_systemverilog_fence(self):
+        text = "Here is the code:\n```systemverilog\nmodule foo;\nendmodule\n```"
+        result = _parse_model_response(text, ["rtl/foo.sv"])
+        assert result is not None
+        assert "module foo" in result["rtl/foo.sv"]
+
+    def test_extracts_verilog_fence(self):
+        text = "```verilog\nmodule bar;\nendmodule\n```"
+        result = _parse_model_response(text, ["rtl/bar.v"])
+        assert result is not None
+        assert "module bar" in result["rtl/bar.v"]
+
+    def test_returns_none_for_no_code(self):
+        text = "I cannot generate this design."
+        result = _parse_model_response(text, ["rtl/foo.sv"])
+        assert result is None
+
+    def test_returns_none_for_empty_target_files(self):
+        result = _parse_model_response("some text", [])
+        assert result is None
+
+    def test_extracts_multi_file_json_format(self):
+        code_obj = {
+            "code": [
+                {"rtl/a.sv": "module a;\nendmodule"},
+                {"rtl/b.sv": "module b;\nendmodule"},
+            ]
+        }
+        text = json.dumps(code_obj)
+        result = _parse_model_response(text, ["rtl/a.sv", "rtl/b.sv"])
+        assert result is not None
+        assert "module a" in result["rtl/a.sv"]
+        assert "module b" in result["rtl/b.sv"]
 
 
 # ---------------------------------------------------------------------------
@@ -296,8 +338,7 @@ class TestCVDPServerVerify:
     @pytest.mark.asyncio
     async def test_verify_no_code_returns_zero_reward(self):
         body_dict = _make_body(output_text="I am unable to generate this design.")
-        with patch("resources_servers.cvdp.app._parse_model_response", return_value=None):
-            result = await self.server.verify(_make_request(body_dict))
+        result = await self.server.verify(_make_request(body_dict))
         assert result.reward == 0.0
         assert result.extracted_rtl is None
         assert result.parse_failed is True

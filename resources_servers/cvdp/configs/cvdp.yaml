@@ -7,7 +7,7 @@ cvdp:
       oss_sim_image: ghcr.io/hdl/sim/osvb
       eda_sim_image: ""
       container_timeout: 600
-      num_processes: 4
+      num_processes: 16
       primary_service: direct
 
 cvdp_simple_agent:
