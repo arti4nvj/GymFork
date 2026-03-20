@@ -14,7 +14,6 @@
 # limitations under the License.
 from argparse import ArgumentParser
 from enum import Enum
-from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import rich
@@ -386,15 +385,6 @@ class DatasetConfig(BaseModel):
         return self
 
 
-class BenchmarkDatasetConfig(BaseModel):
-    name: str
-    type: Literal["benchmark"]
-    jsonl_fpath: Path
-    prepare_script: Path
-    prompt_config: Path
-    num_repeats: int = Field(default=1, ge=1)
-
-
 ########################################
 # Base server config classes
 ########################################
@@ -441,7 +431,7 @@ class BaseRunServerTypeConfig(BaseRunServerConfig):
     host: Optional[str] = None
     port: Optional[int] = None
 
-    datasets: Optional[List[Union[DatasetConfig, BenchmarkDatasetConfig]]] = None
+    datasets: Optional[List[DatasetConfig]] = None
 
 
 class BaseServerTypeConfig(BaseModel):
@@ -513,7 +503,7 @@ class BaseServerInstanceConfig(BaseServerTypeConfig):
         return list(getattr(self, self.SERVER_TYPE).values())[0]
 
     @property
-    def datasets(self) -> Optional[List[Union[DatasetConfig, BenchmarkDatasetConfig]]]:
+    def datasets(self) -> Optional[List[DatasetConfig]]:
         return self.get_inner_run_server_config().datasets
 
 

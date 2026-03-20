@@ -28,12 +28,10 @@ import random
 import uuid
 from pathlib import Path
 
-from nemo_gym.global_config import HF_TOKEN_KEY_NAME, get_global_config_dict
-
 
 BENCHMARK_DIR = Path(__file__).parent
 DATA_DIR = BENCHMARK_DIR / "data"
-OUTPUT_FPATH = DATA_DIR / "gpqa_diamond_benchmark.jsonl"
+OUTPUT_FPATH = DATA_DIR / "gpqa_diamond_validation.jsonl"
 OPTION_LETTERS = ["A", "B", "C", "D"]
 
 
@@ -42,8 +40,7 @@ def prepare() -> Path:
     from datasets import load_dataset
 
     print("Downloading GPQA Diamond from HuggingFace...")
-    hf_token = get_global_config_dict().get(HF_TOKEN_KEY_NAME)
-    ds = load_dataset("Idavidrein/gpqa", "gpqa_diamond", split="train", token=hf_token)
+    ds = load_dataset("Idavidrein/gpqa", "gpqa_diamond", split="train")
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 

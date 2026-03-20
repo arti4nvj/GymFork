@@ -73,7 +73,7 @@ class E2ERolloutCollectionConfig(SharedRolloutCollectionConfig):
     ```
     """
 
-    split: Union[Literal["train"], Literal["validation"], Literal["benchmark"]]
+    split: Union[Literal["train"], Literal["validation"]]
 
 
 class RolloutCollectionConfig(SharedRolloutCollectionConfig):
@@ -141,11 +141,6 @@ class RolloutCollectionHelper(BaseModel):
 
         if config.responses_create_params:
             print(f"Overriding responses_create_params fields with {config.responses_create_params}")
-            responses_create_params_overrides = OmegaConf.to_container(
-                OmegaConf.create(config.responses_create_params), resolve=True
-            )
-        else:
-            responses_create_params_overrides = dict()
 
         num_repeats = config.num_repeats or 1
         if num_repeats:
@@ -180,9 +175,8 @@ class RolloutCollectionHelper(BaseModel):
                 row_idxs_missing_agent_ref.append(row_idx)
 
             # Responses create params
-            row[RESPONSES_CREATE_PARAMS_KEY_NAME] = (
-                row[RESPONSES_CREATE_PARAMS_KEY_NAME] | responses_create_params_overrides
-            )
+            overrides = OmegaConf.to_container(OmegaConf.create(config.responses_create_params), resolve=True)
+            row[RESPONSES_CREATE_PARAMS_KEY_NAME] = row[RESPONSES_CREATE_PARAMS_KEY_NAME] | overrides
 
             # Resolve task index
             row[TASK_INDEX_KEY_NAME] = row_to_task_idx.setdefault(row_str, len(row_to_task_idx))
